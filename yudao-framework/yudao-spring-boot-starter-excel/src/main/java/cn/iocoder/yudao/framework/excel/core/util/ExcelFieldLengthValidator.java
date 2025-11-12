@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.excel.core.annotations.ExcelFieldLength;
 import cn.idev.excel.annotation.ExcelProperty;
 
+import javax.validation.constraints.Size;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -163,6 +164,10 @@ public final class ExcelFieldLengthValidator {
     private static Integer resolveMaxLength(Field field, ExcelFieldLength annotation, Map<String, Integer> config) {
         if (annotation != null && annotation.value() > 0) {
             return annotation.value();
+        }
+        Size sizeAnnotation = field.getAnnotation(Size.class);
+        if (sizeAnnotation != null && sizeAnnotation.max() > 0 && sizeAnnotation.max() != Integer.MAX_VALUE) {
+            return sizeAnnotation.max();
         }
         if (config.isEmpty()) {
             return null;
