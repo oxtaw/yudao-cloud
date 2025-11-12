@@ -4,6 +4,7 @@ import cn.iocoder.yudao.framework.excel.core.annotations.ExcelFieldLength;
 import cn.idev.excel.annotation.ExcelProperty;
 import org.junit.jupiter.api.Test;
 
+import javax.validation.constraints.Size;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -115,6 +116,58 @@ class ExcelFieldLengthValidatorTest {
                 .isEqualTo("字段: 自定义, 限制: 5, 实际: 6");
     }
 
+    @Test
+    void shouldSupportSizeAnnotationWhenValueWithinLimit() {
+        SizeAnnotationSample sample = new SizeAnnotationSample("12345");
+
+        List<String> errors = ExcelFieldLengthValidator.validate(sample);
+
+        assertThat(errors).isEmpty();
+    }
+
+    @Test
+    void shouldSupportSizeAnnotationWhenValueExceedsLimit() {
+        SizeAnnotationSample sample = new SizeAnnotationSample("123456");
+
+        List<String> errors = ExcelFieldLengthValidator.validate(sample);
+
+        assertThat(errors)
+                .hasSize(1)
+                .first()
+                .satisfies(message -> {
+                    assertThat(message).contains("内容");
+                    assertThat(message).contains("5");
+                });
+    }
+
+    @Test
+    void shouldPreferExcelFieldLengthOverSizeAnnotation() {
+        ExcelFieldLengthPreferredSample sample = new ExcelFieldLengthPreferredSample("123456");
+
+        List<String> errors = ExcelFieldLengthValidator.validate(sample);
+
+        assertThat(errors)
+                .hasSize(1)
+                .first()
+                .satisfies(message -> {
+                    assertThat(message).contains("字段B");
+                    assertThat(message).contains("3");
+                });
+    }
+
+    @Test
+    void shouldValidateSizeAnnotationInCollection() {
+        List<Object> samples = Arrays.asList(
+                new SizeAnnotationSample("123456"),
+                new SizeAnnotationSample("12345")
+        );
+
+        List<String> errors = ExcelFieldLengthValidator.validate(samples);
+
+        assertThat(errors).hasSize(1);
+        assertThat(errors).anySatisfy(message -> assertThat(message).contains("第1行"));
+    }
+
     private static final class AnnotatedSample {
 
         @ExcelFieldLength(value = 5, fieldName = "字段A")
@@ -158,6 +211,30 @@ class ExcelFieldLengthValidatorTest {
         private final String content;
 
         private CustomMessageSample(String content) {
+            this.content = content;
+        }
+
+    }
+
+    private static final class SizeAnnotationSample {
+
+        @Size(max = 5)
+        @ExcelProperty("内容")
+        private final String text;
+
+        private SizeAnnotationSample(String text) {
+            this.text = text;
+        }
+
+    }
+
+    private static final class ExcelFieldLengthPreferredSample {
+
+        @ExcelFieldLength(value = 3, fieldName = "字段B")
+        @Size(max = 5)
+        private final String content;
+
+        private ExcelFieldLengthPreferredSample(String content) {
             this.content = content;
         }
 
