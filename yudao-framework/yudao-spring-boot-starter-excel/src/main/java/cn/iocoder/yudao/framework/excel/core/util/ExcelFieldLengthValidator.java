@@ -35,8 +35,8 @@ public final class ExcelFieldLengthValidator {
     /**
      * 基于注解或手动配置的限制，校验单个对象的字段长度
      *
-     * @param bean            被校验的对象
-     * @param fieldLengthMap  字段长度限制配置，key 支持字段名、Excel 表头或注解中声明的 fieldName
+     * @param bean           被校验的对象
+     * @param fieldLengthMap 字段长度限制配置，key 支持字段名、Excel 表头或注解中声明的 fieldName
      * @return 校验失败的提示列表
      */
     public static List<String> validate(Object bean, Map<String, Integer> fieldLengthMap) {
@@ -45,7 +45,84 @@ public final class ExcelFieldLengthValidator {
         }
         Map<String, Integer> config = fieldLengthMap != null ? fieldLengthMap : Collections.emptyMap();
 
-        List<String> errors = new ArrayList<>();
+        List<FieldError> fieldErrors = validateBean(bean, config);
+        List<String> errors = new ArrayList<>(fieldErrors.size());
+        for (FieldError fieldError : fieldErrors) {
+            errors.add(fieldError.getMessage());
+        }
+        return errors;
+    }
+
+    /**
+     * 校验集合中每一个对象的字段长度
+     *
+     * @param beans 待校验的数据集合
+     * @return 校验失败的提示列表
+     */
+    public static List<String> validate(Collection<?> beans) {
+        return validate(beans, Collections.emptyMap());
+    }
+
+    /**
+     * 基于注解或手动配置的限制，校验集合中每一个对象的字段长度
+     *
+     * @param beans          待校验的数据集合
+     * @param fieldLengthMap 字段长度限制配置，key 支持字段名、Excel 表头或注解中声明的 fieldName
+     * @return 校验失败的提示列表
+     */
+    public static List<String> validate(Collection<?> beans, Map<String, Integer> fieldLengthMap) {
+        if (beans == null || beans.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<String, Integer> config = fieldLengthMap != null ? fieldLengthMap : Collections.emptyMap();
+
+        List<RowError> rowErrors = validateWithRow(beans, config);
+        List<String> messages = new ArrayList<>(rowErrors.size());
+        for (RowError rowError : rowErrors) {
+            messages.add(StrUtil.format("第{}行 {}", rowError.getRowIndex(), rowError.getMessage()));
+        }
+        return messages;
+    }
+
+    /**
+     * 校验集合中每一个对象的字段长度，并返回携带行号的详细结果。
+     * 行号从 1 开始，对应集合的自然顺序。
+     *
+     * @param beans 待校验的数据集合
+     * @return 行级校验失败详情
+     */
+    public static List<RowError> validateWithRow(Collection<?> beans) {
+        return validateWithRow(beans, Collections.emptyMap());
+    }
+
+    /**
+     * 校验集合中每一个对象的字段长度，并返回携带行号的详细结果。
+     * 行号从 1 开始，对应集合的自然顺序。
+     *
+     * @param beans          待校验的数据集合
+     * @param fieldLengthMap 字段长度限制配置，key 支持字段名、Excel 表头或注解中声明的 fieldName
+     * @return 行级校验失败详情
+     */
+    public static List<RowError> validateWithRow(Collection<?> beans, Map<String, Integer> fieldLengthMap) {
+        if (beans == null || beans.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<String, Integer> config = fieldLengthMap != null ? fieldLengthMap : Collections.emptyMap();
+
+        List<RowError> rowErrors = new ArrayList<>();
+        int rowIndex = 0;
+        for (Object bean : beans) {
+            rowIndex++;
+            List<FieldError> fieldErrors = validateBean(bean, config);
+            for (FieldError fieldError : fieldErrors) {
+                rowErrors.add(new RowError(rowIndex, fieldError));
+            }
+        }
+        return rowErrors;
+    }
+
+    private static List<FieldError> validateBean(Object bean, Map<String, Integer> config) {
+        List<FieldError> errors = new ArrayList<>();
         for (Field field : getAllFields(bean.getClass())) {
             if (Modifier.isStatic(field.getModifiers())) {
                 continue;
@@ -66,37 +143,8 @@ public final class ExcelFieldLengthValidator {
             }
 
             String fieldLabel = resolveFieldLabel(field, annotation);
-            errors.add(buildMessage(annotation, fieldLabel, maxLength, actualLength));
-        }
-        return errors;
-    }
-
-    /**
-     * 校验集合中每一个对象的字段长度
-     *
-     * @param beans 待校验的数据集合
-     * @return 校验失败的提示列表
-     */
-    public static List<String> validate(Collection<?> beans) {
-        return validate(beans, Collections.emptyMap());
-    }
-
-    /**
-     * 基于注解或手动配置的限制，校验集合中每一个对象的字段长度
-     *
-     * @param beans           待校验的数据集合
-     * @param fieldLengthMap  字段长度限制配置，key 支持字段名、Excel 表头或注解中声明的 fieldName
-     * @return 校验失败的提示列表
-     */
-    public static List<String> validate(Collection<?> beans, Map<String, Integer> fieldLengthMap) {
-        if (beans == null || beans.isEmpty()) {
-            return Collections.emptyList();
-        }
-        Map<String, Integer> config = fieldLengthMap != null ? fieldLengthMap : Collections.emptyMap();
-
-        List<String> errors = new ArrayList<>();
-        for (Object bean : beans) {
-            errors.addAll(validate(bean, config));
+            String message = buildMessage(annotation, fieldLabel, maxLength, actualLength);
+            errors.add(new FieldError(fieldLabel, maxLength, actualLength, message));
         }
         return errors;
     }
@@ -202,6 +250,81 @@ public final class ExcelFieldLengthValidator {
             return ((Map<?, ?>) value).size();
         }
         return String.valueOf(value).length();
+    }
+
+    private static final class FieldError {
+
+        private final String fieldLabel;
+        private final int maxLength;
+        private final int actualLength;
+        private final String message;
+
+        private FieldError(String fieldLabel, int maxLength, int actualLength, String message) {
+            this.fieldLabel = fieldLabel;
+            this.maxLength = maxLength;
+            this.actualLength = actualLength;
+            this.message = message;
+        }
+
+        private String getFieldLabel() {
+            return fieldLabel;
+        }
+
+        private int getMaxLength() {
+            return maxLength;
+        }
+
+        private int getActualLength() {
+            return actualLength;
+        }
+
+        private String getMessage() {
+            return message;
+        }
+    }
+
+    /**
+     * 行级字段长度校验错误
+     */
+    public static final class RowError {
+
+        private final int rowIndex;
+        private final String fieldLabel;
+        private final int maxLength;
+        private final int actualLength;
+        private final String message;
+
+        private RowError(int rowIndex, FieldError fieldError) {
+            this(rowIndex, fieldError.getFieldLabel(), fieldError.getMaxLength(), fieldError.getActualLength(), fieldError.getMessage());
+        }
+
+        private RowError(int rowIndex, String fieldLabel, int maxLength, int actualLength, String message) {
+            this.rowIndex = rowIndex;
+            this.fieldLabel = fieldLabel;
+            this.maxLength = maxLength;
+            this.actualLength = actualLength;
+            this.message = message;
+        }
+
+        public int getRowIndex() {
+            return rowIndex;
+        }
+
+        public String getFieldLabel() {
+            return fieldLabel;
+        }
+
+        public int getMaxLength() {
+            return maxLength;
+        }
+
+        public int getActualLength() {
+            return actualLength;
+        }
+
+        public String getMessage() {
+            return message;
+        }
     }
 
 }

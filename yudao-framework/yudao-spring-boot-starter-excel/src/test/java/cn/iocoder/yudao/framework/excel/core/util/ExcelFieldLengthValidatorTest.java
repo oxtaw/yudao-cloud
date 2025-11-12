@@ -64,6 +64,29 @@ class ExcelFieldLengthValidatorTest {
         List<String> errors = ExcelFieldLengthValidator.validate(samples, Collections.singletonMap("配置字段", 3));
 
         assertThat(errors).hasSize(2);
+        assertThat(errors).anySatisfy(message -> assertThat(message).contains("第1行"));
+        assertThat(errors).anySatisfy(message -> assertThat(message).contains("第2行"));
+    }
+
+    @Test
+    void shouldReturnRowErrorsWithIndex() {
+        List<Object> samples = Arrays.asList(
+                new AnnotatedSample("123456"),
+                new AnnotatedSample("12345"),
+                new ConfigSample("abcd")
+        );
+
+        List<ExcelFieldLengthValidator.RowError> rowErrors = ExcelFieldLengthValidator.validateWithRow(samples, Collections.singletonMap("配置字段", 3));
+
+        assertThat(rowErrors).hasSize(2);
+        assertThat(rowErrors).anySatisfy(error -> {
+            assertThat(error.getRowIndex()).isEqualTo(1);
+            assertThat(error.getFieldLabel()).isEqualTo("字段A");
+        });
+        assertThat(rowErrors).anySatisfy(error -> {
+            assertThat(error.getRowIndex()).isEqualTo(3);
+            assertThat(error.getFieldLabel()).isEqualTo("配置字段");
+        });
     }
 
     @Test
